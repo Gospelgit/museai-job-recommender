@@ -1,0 +1,22 @@
+# netlify.toml
+[build]
+  # Directory to publish (the static site files)
+  publish = "."
+  
+  # No build command needed for this simple HTML/CSS/JS site
+  command = ""
+
+# CORS headers to allow your frontend to connect to the external API
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+    Access-Control-Allow-Headers = "Origin, X-Requested-With, Content-Type, Accept"
+
+# Redirect all paths to index.html (for SPA support if needed)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  
