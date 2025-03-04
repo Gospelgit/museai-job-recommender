@@ -4,7 +4,6 @@ import requests
 from bs4 import BeautifulSoup
 import nltk
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 import time
 import random
 from collections import Counter
@@ -494,10 +493,17 @@ def process_job_for_search(job_desc, job_url, job_name,
         job_embedding = generate_embedding(job_text)
         job_title_embedding = generate_embedding(job_title)
         
-        # Compute similarity scores with BGE model
-        skill_similarity_score = float(cosine_similarity([user_profile_embedding], [job_embedding])[0][0])
-        title_similarity_score = float(cosine_similarity([user_job_title_embedding], [job_title_embedding])[0][0])
-        query_match_score = float(cosine_similarity([user_input_embedding], [job_embedding])[0][0])
+        # Compute similarity scores 
+        def cosine_similarity(a, b):
+            """Calculate cosine similarity between two vectors"""
+            dot_product = sum(x * y for x, y in zip(a, b))
+            norm_a = sum(x * x for x in a) ** 0.5
+            norm_b = sum(x * x for x in b) ** 0.5
+            return dot_product / (norm_a * norm_b) if norm_a * norm_b > 0 else 0
+            
+        skill_similarity_score = float(cosine_similarity(user_profile_embedding, job_embedding))
+        title_similarity_score = float(cosine_similarity(user_job_title_embedding, job_title_embedding))
+        query_match_score = float(cosine_similarity(user_input_embedding, job_embedding))
         
         # Extract key terms from job
         job_key_terms = tuple(extract_key_terms(job_desc[:1000]))  # Limit processing to first 1000 chars
@@ -652,8 +658,8 @@ def find_matching_jobs_by_title(df, user_input, min_consecutive_chars=3):
                 batch_embeddings = [generate_embedding(title) for title in batch_titles]
                 
                 # Calculate similarities
-                batch_similarities = [float(cosine_similarity([user_input_embedding], [job_emb])[0][0])
-                                     for job_emb in batch_embeddings]
+                batch_similarities = [float(cosine_similarity(user_input_embedding, job_emb))
+                                    for job_emb in batch_embeddings]
                 
                 all_similarities.extend(batch_similarities)
                 remaining_indices_processed.extend(batch_indices)
