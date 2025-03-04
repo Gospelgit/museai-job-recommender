@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger('museai_job_recommender')
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)  # Allow all origins for now
 
 # Import the job recommender module
 def load_job_recommender():
