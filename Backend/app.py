@@ -23,10 +23,14 @@ def load_job_recommender():
         # Path to your original job recommender module
         module_path = "job_recommender.py"
         
+        logger.info(f"Current working directory: {os.getcwd()}")
+        logger.info(f"Files in directory: {os.listdir('.')}")
+        
         if not os.path.exists(module_path):
             logger.error(f"Job recommender module not found at {module_path}")
             return None
             
+        logger.info(f"Loading module from {module_path}")
         spec = importlib.util.spec_from_file_location("job_recommender", module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
