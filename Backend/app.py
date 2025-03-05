@@ -14,7 +14,9 @@ logging.basicConfig(
 logger = logging.getLogger('museai_job_recommender')
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)  # Allow all origins for now
+CORS(app, 
+     resources={r"/api/*": {"origins": ["https://museai-job-recommender.netlify.app", "http://localhost:3000"]}}, 
+     supports_credentials=True)
 
 # Import the job recommender module
 def load_job_recommender():
