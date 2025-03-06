@@ -224,7 +224,68 @@
     
     <script>
         // Setting backend API URL 
-        const API_URL = 'https://museai-job-recommender-1.onrender.com';
+        const API_URL = 'https://museai-job-recommender-1.onrender.com/api/search';
+        
+        // Test connection to backend when page loads
+        window.addEventListener('DOMContentLoaded', function() {
+            // Check connection to backend
+            fetch(`${API_URL.replace('/api/search', '/api/connection-check')}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Backend server not responding properly');
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Backend connection successful:', data);
+                // Hide any error message if it exists
+                const connectionAlert = document.getElementById('connection-alert');
+                if (connectionAlert) {
+                    connectionAlert.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                console.error('Backend connection error:', error);
+                // Create and show connection error
+                showConnectionError();
+            });
+        });
+
+        // Function to show connection error
+        function showConnectionError() {
+            // Check if alert already exists
+            if (!document.getElementById('connection-alert')) {
+                // Create alert element
+                const alertDiv = document.createElement('div');
+                alertDiv.id = 'connection-alert';
+                alertDiv.className = 'error';
+                alertDiv.style.position = 'fixed';
+                alertDiv.style.top = '10px';
+                alertDiv.style.left = '50%';
+                alertDiv.style.transform = 'translateX(-50%)';
+                alertDiv.style.zIndex = '1000';
+                alertDiv.style.padding = '15px 20px';
+                alertDiv.style.borderRadius = '5px';
+                alertDiv.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+                alertDiv.style.maxWidth = '90%';
+                
+                alertDiv.innerHTML = `
+                    <p><strong>Connection Error:</strong> We no fit connect to the backend server!</p>
+                    <p>Make sure the backend server dey run and you get good internet connection.</p>
+                `;
+                
+                // Add to the document
+                document.body.appendChild(alertDiv);
+            } else {
+                // Just show the existing alert
+                document.getElementById('connection-alert').style.display = 'block';
+            }
+        }
         
         // Variables to track current step
         let currentStep = 1;
