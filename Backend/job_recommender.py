@@ -147,7 +147,7 @@ def _process_embedding_batches():
         current_batch = []
         current_keys = []
         
-        # Get items from queue up to batch size
+        # queuing batches size
         with _batch_queue_lock:
             while _batch_queue and len(current_batch) < batch_size:
                 key, text = _batch_queue.pop(0)
@@ -156,12 +156,12 @@ def _process_embedding_batches():
         
         if current_batch:
             try:
-                # Get model and compute embeddings in batch
+                #computing embeddings in batch
                 model = get_embedding_model()
                 with torch.no_grad():  # Disable gradient calculation for inference
                     embeddings = model.encode(current_batch, normalize_embeddings=True)
                 
-                # Store results
+                # Storing results
                 for i, key in enumerate(current_keys):
                     _batch_results[key] = embeddings[i].tolist()
             except Exception as e:
@@ -182,16 +182,15 @@ CACHE_EXPIRY_SECONDS = 3600  # 1 hour cache validity
 
 
 def clean_old_cache_entries():
-    """Remove cache entries older than the expiry time or if cache is too big."""
     current_time = time.time()
     keys_to_remove = []
     
-    # Remove expired entries
+    # Removing expired entries
     for key, timestamp in list(embedding_cache_timestamps.items()):
         if current_time - timestamp > CACHE_EXPIRY_SECONDS:
             keys_to_remove.append(key)
     
-    # If still too many entries, remove oldest ones
+   
     if len(embedding_cache) - len(keys_to_remove) > MAX_CACHE_ENTRIES:
         # Sort by timestamp and keep only newest MAX_CACHE_ENTRIES
         sorted_items = sorted(
@@ -200,7 +199,7 @@ def clean_old_cache_entries():
             reverse=True
         )
         
-        # Keep only newest entries
+      
         to_keep = [k for k, _ in sorted_items[:MAX_CACHE_ENTRIES]]
         
         # Mark rest for removal
@@ -213,7 +212,7 @@ def clean_old_cache_entries():
         embedding_cache.pop(key, None)
         embedding_cache_timestamps.pop(key, None)
     
-    # Also clean batch results
+  
     clean_batch_results()
 
 @functools.lru_cache(maxsize=500)
@@ -223,7 +222,7 @@ def generate_embedding(text):
         # Return zero vector for empty text
         return [0.0] * EMBEDDING_DIMENSION
     
-    # Clean and normalize the text
+    # Cleaning and normalizing the text
     cleaned_text = re.sub(r'\s+', ' ', text).strip()
     if len(cleaned_text) > 512:  # Limit text length for performance
         cleaned_text = cleaned_text[:512]
@@ -238,7 +237,7 @@ def generate_embedding(text):
     # If batch processing thread not started, start it
     start_batch_processing()
     
-    # Add to batch queue with unique key
+    # Adding to batch queue with unique key
     request_key = f"{cache_key}_{time.time()}"
     with _batch_queue_lock:
         _batch_queue.append((request_key, cleaned_text))
@@ -270,7 +269,7 @@ def generate_embedding(text):
         # Return zeros on error
         return [0.0] * EMBEDDING_DIMENSION
 
-# Download nltk resources in background
+# Downloading nltk resources
 def initialize_nltk():
     """Initialize NLTK resources if needed."""
     resources = ['punkt', 'stopwords', 'wordnet']
