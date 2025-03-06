@@ -1,1 +1,1 @@
-Using sentence transformers to recommend jobs by reading and extracting some inputting details from the user and parsing that throuh word embeddings and vector serach from a job's file from a local storage
+Using sentence transformers to recommend jobs by reading and extracting some inputted details from the user and parsing that through word embeddings and vector search from a job's file from a local storage
