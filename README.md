@@ -1,1 +1,1 @@
-# museai-job-recommender
+Using sentence transformers to recommend jobs by reading and extracting some inputting details from the user and parsing that throuh word embeddings and vector serach from a job's file from a local storage
