@@ -1,3 +1,6 @@
+# Importing the patch module first - before any other imports
+import patch_imports
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
