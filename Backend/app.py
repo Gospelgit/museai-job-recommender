@@ -141,7 +141,7 @@ def check_connection():
 def health_check():
     """Health check endpoint."""
     if job_recommender is None:
-        return jsonify({"status": "error", "message": "Job recommender module not loaded"}), 500
+        return jsonify({"status": "warning", "message": "Job recommender module not loaded, but service is running"}), 200
     
     return jsonify({"status": "ok", "message": "MuseAI Job Recommender service is healthy"})
 
@@ -149,7 +149,9 @@ def health_check():
 def search_jobs():
     """Endpoint to search for jobs based on user input."""
     if job_recommender is None:
-        return jsonify({"error": "Job recommender service is not available"}), 500
+        # Instead of returning an error, use the fallback implementation
+        logger.warning("Using fallback job search implementation - job_recommender module not available")
+        return search_jobs_fallback()
     
     try:
         # Get request data
