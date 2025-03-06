@@ -17,9 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger('museai_job_recommender')
 
 app = Flask(__name__)
-CORS(app, 
-     resources={r"/api/*": {"origins": ["https://aimuse.netlify.app", "http://localhost:3000"]}}, 
-     supports_credentials=True)
+CORS(app)
 
 # Import the job recommender module
 def load_job_recommender():
