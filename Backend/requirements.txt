@@ -12,3 +12,4 @@ sentence-transformers==3.4.1
 selenium==4.1.0
 webdriver-manager
 openpyxl>=3.0.0
+psutil>=5.8.0
