@@ -57,7 +57,7 @@ def _load_model():
     global _embedding_model
     try:
         # Use half-precision to reduce memory usage and increase speed
-        _embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5")
+        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         
         # Optimize model for inference
         _embedding_model.eval()  # Set to evaluation mode
