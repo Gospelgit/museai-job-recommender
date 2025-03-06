@@ -21,12 +21,52 @@ import concurrent.futures
 import functools
 import threading
 import torch
+import gc
+import psutil
 
+
+def log_memory_usage(log_point=""):
+    """Log current memory usage."""
+    # Force garbage collection
+    gc.collect()
+    
+    try:
+        # Get process memory info
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        
+        # Log memory usage
+        print(f"MEMORY USAGE [{log_point}]: {memory_info.rss / (1024 * 1024):.2f} MB")
+    except Exception as e:
+        print(f"Error logging memory: {e}")
+
+def emergency_memory_cleanup():
+    """Emergency cleanup when memory is low."""
+    global embedding_cache, embedding_cache_timestamps, _batch_results
+    
+    print("Performing emergency memory cleanup...")
+    
+    # Clear caches
+    if 'embedding_cache' in globals():
+        embedding_cache.clear()
+    if 'embedding_cache_timestamps' in globals():
+        embedding_cache_timestamps.clear()
+    if '_batch_results' in globals():
+        _batch_results.clear()
+    
+    # Force garbage collection
+    gc.collect()
+    
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    print("Emergency memory cleanup completed")
 # Global configurations for performance
-MAX_JOBS_TO_PROCESS = 25  # Reduced from 20 for faster processing
-MAX_PARALLEL_WORKERS = 5
-EMBEDDING_DIMENSION = 1024  # BGE model embedding dimension
-MODEL_LOADING_TIMEOUT = 30  # Maximum time to wait for model loading in seconds
+MAX_CACHE_ENTRIES = 100  # Limit total entries
+MAX_JOBS_TO_PROCESS = 15  # Reduced from 25 to 15
+MAX_PARALLEL_WORKERS = 3  # Reduced from 5 to 3
+EMBEDDING_DIMENSION = 1024  # Mini model embedding dimension
+MODEL_LOADING_TIMEOUT = 45  # Maximum time to wait for model loading in seconds
 
 # Use a model loading mechanism with timeout
 _embedding_model = None
@@ -46,30 +86,30 @@ def get_embedding_model():
                 
                 # Wait for model loading with timeout
                 if not _model_loading_event.wait(MODEL_LOADING_TIMEOUT):
-                    # Fallback to a smaller model if loading takes too long
-                    print("BGE model loading timeout. Falling back to smaller model.")
+                    # Use minimal model if loading takes too long
+                    print("Model loading timeout. Using minimal configuration.")
                     _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
     
     return _embedding_model
 
 def _load_model():
-    """Load the BGE model and set the event when done."""
+    """Load a small efficient model and set the event when done."""
     global _embedding_model
     try:
-        # Use half-precision to reduce memory usage and increase speed
+        # Use the smallest viable model by default - no fallback needed
         _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
         
         # Optimize model for inference
         _embedding_model.eval()  # Set to evaluation mode
+        
+        # Quantize model to reduce memory usage
+        _embedding_model = _embedding_model.half()  # Use FP16 for all cases
+        
+        # Clear CUDA cache if available
         if torch.cuda.is_available():
-            _embedding_model = _embedding_model.to("cuda")
-        else:
-            # Use half-precision even on CPU for memory savings
-            _embedding_model = _embedding_model.half()
+            torch.cuda.empty_cache()
     except Exception as e:
-        print(f"Error loading BGE model: {str(e)}")
-        # Fall back to smaller model on error
-        _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        print(f"Error loading model: {str(e)}")
     finally:
         _model_loading_event.set()  # Signal that loading is complete
 
@@ -140,18 +180,41 @@ embedding_cache = {}
 embedding_cache_timestamps = {}
 CACHE_EXPIRY_SECONDS = 3600  # 1 hour cache validity
 
+
 def clean_old_cache_entries():
-    """Remove cache entries older than the expiry time."""
+    """Remove cache entries older than the expiry time or if cache is too big."""
     current_time = time.time()
     keys_to_remove = []
     
-    for key, timestamp in embedding_cache_timestamps.items():
+    # Remove expired entries
+    for key, timestamp in list(embedding_cache_timestamps.items()):
         if current_time - timestamp > CACHE_EXPIRY_SECONDS:
             keys_to_remove.append(key)
     
+    # If still too many entries, remove oldest ones
+    if len(embedding_cache) - len(keys_to_remove) > MAX_CACHE_ENTRIES:
+        # Sort by timestamp and keep only newest MAX_CACHE_ENTRIES
+        sorted_items = sorted(
+            [(k, v) for k, v in embedding_cache_timestamps.items() if k not in keys_to_remove],
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        
+        # Keep only newest entries
+        to_keep = [k for k, _ in sorted_items[:MAX_CACHE_ENTRIES]]
+        
+        # Mark rest for removal
+        for key in list(embedding_cache.keys()):
+            if key not in to_keep and key not in keys_to_remove:
+                keys_to_remove.append(key)
+    
+    # Remove all marked entries
     for key in keys_to_remove:
         embedding_cache.pop(key, None)
         embedding_cache_timestamps.pop(key, None)
+    
+    # Also clean batch results
+    clean_batch_results()
 
 @functools.lru_cache(maxsize=500)
 def generate_embedding(text):
@@ -444,7 +507,7 @@ def vector_search(user_profile_embedding, user_job_title_embedding, user_experie
     # Prepare a variation of user inputs for better matching
     user_input_embedding = generate_embedding(user_input)
     
-    # Process jobs in parallel
+    # Process jobs in parallel - with reduced parallelism
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_WORKERS) as executor:
         futures = []
         for job_desc, job_url, job_name in zip(job_descriptions, job_urls, job_names):
@@ -464,12 +527,16 @@ def vector_search(user_profile_embedding, user_job_title_embedding, user_experie
                 scored_jobs.append(job_result)
                 
                 # Early termination if we have enough high-scoring results
-                if len(scored_jobs) >= top_k * 2 and any(job["score"] > 80 for job in scored_jobs):
+                if len(scored_jobs) >= top_k * 1.5 and any(job["score"] > 80 for job in scored_jobs):
                     # Cancel remaining futures if we have good matches
                     for f in futures:
                         if not f.done():
                             f.cancel()
                     break
+    
+    # Force garbage collection after parallel processing
+    import gc
+    gc.collect()
     
     # Sort by score in descending order
     scored_jobs.sort(key=lambda x: x["score"], reverse=True)
@@ -873,6 +940,9 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
     start_time = time.time()
     
     try:
+        # Track memory at start
+        log_memory_usage("request_start")
+        
         # Start batch processing for embeddings
         start_batch_processing()
         
@@ -904,6 +974,8 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
             engine='openpyxl'  # Specify engine explicitly
         )
         
+        log_memory_usage("after_excel_load")
+        
         if job_df.empty:
             return {"error": "No job listings found in the Excel file. Please check your data."}
         
@@ -915,6 +987,10 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
         # Find matching jobs by title
         print("Finding matching jobs...")
         matching_jobs = find_matching_jobs_by_title(job_df, job_title)
+        
+        # Clean up dataframe as it's no longer needed
+        del job_df
+        gc.collect()
         
         if not matching_jobs:
             return {"error": "We no see any job wey match your search. Try another job title."}
@@ -933,13 +1009,15 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
                 if result:
                     all_job_data.append(result)
                     
-                    # Early termination if we have enough jobs and have been processing for over 20 seconds
-                    if len(all_job_data) >= 10 and time.time() - start_time > 20:
+                    # Early termination if we have enough jobs and have been processing for over 15 seconds
+                    if len(all_job_data) >= 10 and time.time() - start_time > 15:
                         # Cancel remaining futures
                         for f in futures:
                             if not f.done():
                                 f.cancel()
                         break
+        
+        log_memory_usage("after_job_fetch")
         
         if not all_job_data:
             return {"error": "We no fit get any job descriptions. Please check your internet connection."}
@@ -968,6 +1046,10 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
         clean_old_cache_entries()  # Clean up stale cache entries
         stop_batch_processing()  # Stop background embedding processing
         
+        # Final memory cleanup
+        emergency_memory_cleanup()
+        log_memory_usage("request_end")
+        
         # Calculate processing time
         processing_time = time.time() - start_time
         print(f"Processing completed in {processing_time:.2f} seconds")
@@ -976,7 +1058,7 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
         return {
             "recommendations": recommendations,
             "processing_time": f"{processing_time:.2f} seconds",
-            "model_used": "BAAI/bge-large-en-v1.5"
+            "model_used": "all-MiniLM-L6-v2"  # Update to show correct model
         }
         
     except Exception as e:
@@ -986,6 +1068,7 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
     finally:
         # Ensure resources are cleaned up
         stop_batch_processing()
+        emergency_memory_cleanup()
 
 def main():
     """Command-line interface for the job recommender"""
