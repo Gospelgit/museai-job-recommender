@@ -1,30 +1,3 @@
-import re
-import pandas as pd
-import requests
-from bs4 import BeautifulSoup
-import nltk
-from sentence_transformers import SentenceTransformer
-import time
-import random
-from collections import Counter
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
-import os
-import concurrent.futures
-import functools
-import threading
-import torch
-import gc
-import psutil
-
-
 def log_memory_usage(log_point=""):
     """Log current memory usage."""
     # Force garbage collection
