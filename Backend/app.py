@@ -437,7 +437,8 @@ with st.expander("💬 Feedback", expanded=False):
             except:
                 pass
         else:
-            st.error("Abeg, write something for the feedback field.")mport Flask, request, jsonify
+            st.error("Abeg, write something for the feedback field.")
+import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import traceback
