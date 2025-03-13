@@ -38,7 +38,7 @@ def get_job_recommendations(job_title, skills, experience, uploaded_file=None):
 
 # App title and description
 st.title("MuseAI Job Recommender")
-st.markdown("### Find your perfect job match with AI-powered recommendations")
+st.markdown("### Come make we help you find global jobs using AI")
 
 # Sidebar for inputs - simplified to just job title, skills, and experience
 with st.sidebar:
@@ -55,14 +55,14 @@ with st.sidebar:
         desired_role = st.text_input(
             "Wetin be the job you dey find?",
             placeholder="e.g., Data Scientist, Software Engineer",
-            help="Enter the job title you want"
+            help="Wetin be the job you dey find?"
         )
         
         # Skills input
         skills = st.text_area(
             "Your skills (separate am with comma)",
             placeholder="e.g., Python, Data Analysis, Communication",
-            help="Enter your skills separated by commas"
+            help="Wetin be your skills, separate am with commas"
         )
         
         # Experience level
@@ -71,7 +71,7 @@ with st.sidebar:
             min_value=0,
             max_value=20,
             value=2,
-            help="Select your years of professional experience"
+            help="How many years experience you get"
         )
         
         # Submit button
@@ -109,9 +109,9 @@ if submit_button:
                 with col1:
                     st.metric("Average Match Score", f"{recommendations['match_score'].mean():.1f}%")
                 with col2:
-                    st.metric("Jobs Found", len(recommendations))
+                    st.metric("Jobs wer we find", len(recommendations))
                 with col3:
-                    st.metric("Processing Time", f"{processing_time:.1f}s")
+                    st.metric("Time wer e take us to find the jobs", f"{processing_time:.1f}s")
                 
                 # Display each job
                 st.markdown("## Recommended Jobs")
