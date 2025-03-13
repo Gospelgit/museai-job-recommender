@@ -15,15 +15,15 @@ from datetime import datetime
 # Add the current directory to the path so we can import the module
 sys.path.append(os.path.abspath("."))
 
-# Use st.cache_resource to ensure the Job_recommend module is only loaded once
+# Use st.cache_resource to ensure the job_recommend module is only loaded once
 @st.cache_resource
 def load_job_recommend_module():
     try:
-        import Job_recommend
-        return Job_recommend
+        import job_recommender
+        return job_recommender
     except ImportError as e:
-        st.error(f"Could not import Job_recommend module: {str(e)}")
-        st.error("Make sure Job_recommend.py is in the current directory.")
+        st.error(f"Could not import job_recommend module: {str(e)}")
+        st.error("Make sure job_recommend.py is in the current directory.")
         return None
 
 # Set page config
@@ -38,8 +38,8 @@ st.set_page_config(
 @st.cache_data(ttl=3600)  # Cache results for 1 hour
 def get_job_recommendations(desired_role, skills, experience, uploaded_file=None):
     """Get job recommendations with caching"""
-    Job_recommend = load_job_recommend_module()
-    if not Job_recommend:
+    job_recommend = load_job_recommend_module()
+    if not job_recommend:
         return None
     
     # Create user profile
@@ -50,7 +50,7 @@ def get_job_recommendations(desired_role, skills, experience, uploaded_file=None
     }
     
     # Call the recommendation function
-    return Job_recommend.streamlit_recommendation(desired_role, skills, experience, uploaded_file)
+    return job_recommender.streamlit_recommendation(desired_role, skills, experience, uploaded_file)
 
 # Function to generate a downloadable CSV of results
 def generate_csv(recommendations):
@@ -147,7 +147,7 @@ if submit_button:
             
             # Display recommendations
             if recommendations is None:
-                st.error("Something don happen. Make sure the Job_recommend module dey properly set up.")
+                st.error("Something don happen. Make sure the job_recommend module dey properly set up.")
             elif recommendations.empty:
                 st.info("We no see any job wey match. Try change your skills small.")
             else:
