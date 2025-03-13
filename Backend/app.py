@@ -5,6 +5,7 @@ import os
 import time
 import tempfile
 import re
+import Job_recommend
 
 # Set page config first (should be at the very top)
 st.set_page_config(
