@@ -24,8 +24,6 @@ import torch
 import gc
 import psutil
 
-
-
 def log_memory_usage(log_point=""):
     """Log current memory usage."""
     # Force garbage collection
@@ -62,12 +60,13 @@ def emergency_memory_cleanup():
         torch.cuda.empty_cache()
     
     print("Emergency memory cleanup completed")
-# Global configurations for performance
-MAX_CACHE_ENTRIES = 100  # Limit total entries
-MAX_JOBS_TO_PROCESS = 15  # Reduced from 25 to 15
-MAX_PARALLEL_WORKERS = 3  # Reduced from 5 to 3
-EMBEDDING_DIMENSION = 1024  # Mini model embedding dimension
-MODEL_LOADING_TIMEOUT = 45  # Maximum time to wait for model loading in seconds
+
+# Global configurations for performance - reduced for Streamlit Cloud
+MAX_CACHE_ENTRIES = 50  # Reduced from 100
+MAX_JOBS_TO_PROCESS = 10  # Reduced from 15
+MAX_PARALLEL_WORKERS = 2  # Reduced from 3
+EMBEDDING_DIMENSION = 384  # Mini model embedding dimension (MiniLM)
+MODEL_LOADING_TIMEOUT = 30  # Reduced from 45
 
 # Use a model loading mechanism with timeout
 _embedding_model = None
@@ -142,7 +141,7 @@ def stop_batch_processing():
 
 def _process_embedding_batches():
     """Background thread to process embedding batches efficiently."""
-    batch_size = 16  # Process 16 texts at once for efficiency
+    batch_size = 8  # Reduced from 16 for Streamlit Cloud
     
     while not _stop_batch_processing:
         current_batch = []
@@ -176,11 +175,16 @@ def _process_embedding_batches():
             _batch_processing_event.wait(timeout=0.5)
             _batch_processing_event.clear()
 
+def clean_batch_results():
+    """Clean old batch results to prevent memory leaks."""
+    global _batch_results
+    if len(_batch_results) > MAX_CACHE_ENTRIES * 2:
+        _batch_results.clear()
+
 # Enhanced embedding cache with timeout-based invalidation
 embedding_cache = {}
 embedding_cache_timestamps = {}
-CACHE_EXPIRY_SECONDS = 3600  # 1 hour cache validity
-
+CACHE_EXPIRY_SECONDS = 1800  # 30 min cache validity for Streamlit Cloud
 
 def clean_old_cache_entries():
     current_time = time.time()
@@ -191,7 +195,6 @@ def clean_old_cache_entries():
         if current_time - timestamp > CACHE_EXPIRY_SECONDS:
             keys_to_remove.append(key)
     
-   
     if len(embedding_cache) - len(keys_to_remove) > MAX_CACHE_ENTRIES:
         # Sort by timestamp and keep only newest MAX_CACHE_ENTRIES
         sorted_items = sorted(
@@ -200,7 +203,6 @@ def clean_old_cache_entries():
             reverse=True
         )
         
-      
         to_keep = [k for k, _ in sorted_items[:MAX_CACHE_ENTRIES]]
         
         # Mark rest for removal
@@ -213,10 +215,9 @@ def clean_old_cache_entries():
         embedding_cache.pop(key, None)
         embedding_cache_timestamps.pop(key, None)
     
-  
     clean_batch_results()
 
-@functools.lru_cache(maxsize=500)
+@functools.lru_cache(maxsize=200)  # Reduced from 500
 def generate_embedding(text):
     """Generate embedding for text with batching support and caching."""
     if not text or not isinstance(text, str) or not text.strip():
@@ -308,7 +309,6 @@ def extract_job_details(job_description):
     """
     Extract job title, company name, responsibilities, qualifications, years of experience,
     location, salary/pay information, and the entity needing the work done from a job description.
-    Optimized version with cleaner regex and early returns.
     """
     # Initialize with defaults
     job_details = {
@@ -403,7 +403,7 @@ def extract_job_details(job_description):
     )
 
 # Use LRU cache for extract_key_terms to avoid recomputation
-@functools.lru_cache(maxsize=300)
+@functools.lru_cache(maxsize=200)  # Reduced from 300
 def extract_key_terms(text):
     """
     Extract important keywords and phrases from text using NLP techniques.
@@ -430,13 +430,13 @@ def extract_key_terms(text):
         term_counter = Counter(filtered_tokens)
         
         # Get most common terms (reduced for performance)
-        return [term for term, _ in term_counter.most_common(40)]  
+        return [term for term, _ in term_counter.most_common(30)]  # Reduced from 40
     except Exception:
         # Fallback to simple word extraction if NLP processing fails
         words = text.lower().split()
-        return [w for w in words if len(w) > 2][:40]
+        return [w for w in words if len(w) > 2][:30]  # Reduced from 40
 
-@functools.lru_cache(maxsize=500)
+@functools.lru_cache(maxsize=200)  # Reduced from 500
 def calculate_term_overlap(user_terms_tuple, job_terms_tuple):
     """
     Calculate the overlap between user's terms and job terms.
@@ -455,7 +455,7 @@ def calculate_term_overlap(user_terms_tuple, job_terms_tuple):
     
     return intersection / union if union > 0 else 0.0
 
-@functools.lru_cache(maxsize=500)
+@functools.lru_cache(maxsize=200)  # Reduced from 500
 def calculate_title_relevance(user_input, job_title):
     """
     Calculate how relevant the job title is to the user's search query.
@@ -535,7 +535,6 @@ def vector_search(user_profile_embedding, user_job_title_embedding, user_experie
                     break
     
     # Force garbage collection after parallel processing
-    import gc
     gc.collect()
     
     # Sort by score in descending order
@@ -630,16 +629,16 @@ def process_job_for_search(job_desc, job_url, job_name,
         
         # Create job result - ensure all values are JSON serializable
         return {
-            "jobTitle": job_name if job_name else job_title,
+            "title": job_name if job_name else job_title,
             "company": entity_info if entity_info != "Not specified" else company_name,
-            "score": float(round(final_score, 1)),  # Ensure this is a standard Python float
+            "match_score": float(round(final_score, 1)),  # Ensure this is a standard Python float
             "location": job_location,
             "salary": salary_info,
             "experience": int(job_experience),  # Ensure this is a standard Python int
             "url": str(job_url),
             "responsibilities": job_responsibilities[:200] + "..." if len(job_responsibilities) > 200 else job_responsibilities,
-            # Add key skills for better user understanding
-            "key_skills": ", ".join(job_key_terms[:5]) if job_key_terms else "Not specified"
+            "description": job_desc[:1000] + "..." if len(job_desc) > 1000 else job_desc,
+            "required_skills": list(job_key_terms[:5]) if job_key_terms else []
         }
     except Exception as e:
         # Skip jobs that cause errors
@@ -678,26 +677,26 @@ def find_matching_jobs_by_title(df, user_input, min_consecutive_chars=3):
     matches.extend(exact_match_indices)
     
     # Then look for matches containing all words
-    if len(matches) < 100 and len(user_input_words) > 0:
+    if len(matches) < 50 and len(user_input_words) > 0:  # Reduced from 100
         all_words_mask = df_filtered['title_lower'].apply(
             lambda title: all(word in title for word in user_input_words)
         )
         all_words_indices = df_filtered[all_words_mask].index.difference(exact_match_indices).tolist()
-        matches.extend(all_words_indices[:50])  # Limit to 50 for performance
+        matches.extend(all_words_indices[:30])  # Reduced from 50
     
     # Then match individual words
-    if len(matches) < 100:
+    if len(matches) < 50:  # Reduced from 100
         for word in user_input_words:
-            if len(matches) >= 100:
+            if len(matches) >= 50:  # Reduced from 100
                 break
                 
             # Find rows containing this word as whole word
             word_mask = df_filtered['title_lower'].str.contains(r'\b' + re.escape(word) + r'\b', regex=True)
             word_indices = df_filtered[word_mask].index.difference(matches).tolist()
-            matches.extend(word_indices[:50])  # Limit to 50 per word
+            matches.extend(word_indices[:30])  # Reduced from 50
     
     # If still not enough matches, try semantic matching with embeddings
-    if len(matches) < 50:
+    if len(matches) < 25:  # Reduced from 50
         # Create embedding for user input
         user_input_embedding = generate_embedding(user_input)
         
@@ -705,7 +704,7 @@ def find_matching_jobs_by_title(df, user_input, min_consecutive_chars=3):
         remaining_indices = list(set(df_filtered.index) - set(matches))
         
         # Only process a subset of remaining jobs for performance
-        sample_size = min(200, len(remaining_indices))
+        sample_size = min(100, len(remaining_indices))  # Reduced from 200
         if sample_size > 0:
             remaining_sample = random.sample(remaining_indices, sample_size)
             
@@ -713,7 +712,7 @@ def find_matching_jobs_by_title(df, user_input, min_consecutive_chars=3):
             remaining_titles = df_filtered.loc[remaining_sample, title_column].tolist()
             
             # Process in batches
-            batch_size = 16
+            batch_size = 8  # Reduced from 16
             all_similarities = []
             remaining_indices_processed = []
             
@@ -738,7 +737,7 @@ def find_matching_jobs_by_title(df, user_input, min_consecutive_chars=3):
                 
                 # Only add high-similarity matches
                 semantic_matches = [(idx, score) for idx, score in remaining_with_scores if score > 0.5]
-                matches.extend([idx for idx, _ in semantic_matches[:30]])
+                matches.extend([idx for idx, _ in semantic_matches[:20]])  # Reduced from 30
     
     # Convert matches to row dictionaries, limiting to top MAX_JOBS_TO_PROCESS
     matches = list(set(matches))  # Remove duplicates
@@ -767,7 +766,7 @@ def return_selenium_driver(driver):
     """Return a Selenium driver to the pool."""
     if driver:
         with _selenium_pool_lock:
-            if len(_selenium_pool) < 2:  # Reduced pool size for memory efficiency
+            if len(_selenium_pool) < 1:  # Reduced from 2
                 _selenium_pool.append(driver)
             else:
                 try:
@@ -791,7 +790,7 @@ def initialize_selenium_driver():
         chrome_options.add_argument("--blink-settings=imagesEnabled=false")
         
         driver = webdriver.Chrome(options=chrome_options)
-        driver.set_page_load_timeout(10)  # Further reduced timeout
+        driver.set_page_load_timeout(8)  # Further reduced timeout from 10 to 8
         return driver
     except Exception as e:
         print(f"Error initializing Selenium driver: {str(e)}")
@@ -811,7 +810,7 @@ def extract_job_description_from_url(url, driver=None):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        response = requests.get(url, headers=headers, timeout=5)  # Reduced timeout
+        response = requests.get(url, headers=headers, timeout=4)  # Reduced timeout from 5 to 4
         
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -837,7 +836,7 @@ def extract_job_description_from_url(url, driver=None):
             if soup.body:
                 body_text = soup.body.get_text(separator=' ', strip=True)
                 if len(body_text) > 200:
-                    return body_text[:5000]  # Limit length for processing efficiency
+                    return body_text[:3000]  # Reduced from 5000 to 3000
     except Exception as e:
         print(f"Request error for {url}: {str(e)}")
     
@@ -847,7 +846,7 @@ def extract_job_description_from_url(url, driver=None):
             driver.get(url)
             
             # Shorter wait time
-            WebDriverWait(driver, 5).until(
+            WebDriverWait(driver, 4).until(  # Reduced from 5 to 4
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
             
@@ -867,7 +866,7 @@ def extract_job_description_from_url(url, driver=None):
             
             # If no specific container found, get all body text
             page_text = driver.find_element(By.TAG_NAME, "body").text
-            return page_text[:5000]  # Limit length for processing efficiency
+            return page_text[:3000]  # Reduced from 5000 to 3000
         except Exception as e:
             print(f"Selenium error for {url}: {str(e)}")
             return "Failed to extract job description"
@@ -885,7 +884,7 @@ def fetch_job_description(job):
         return None
     
     # Use a simple retry mechanism
-    max_retries = 2
+    max_retries = 1  # Reduced from 2 to 1
     for attempt in range(max_retries):
         try:
             # Get Selenium driver only if needed
@@ -922,7 +921,7 @@ def fetch_job_description(job):
                     pass
             # Simple exponential backoff
             if attempt < max_retries - 1:
-                time.sleep(1 * (attempt + 1))
+                time.sleep(0.5)  # Reduced from 1 to 0.5
     
     # Return partial data if we have a title and link
     return {
@@ -954,7 +953,9 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
             possible_paths = [
                 r"C:/Users/Gospel/Documents/Flask JR launch/job_listings.xlsx",
                 r"job_listings.xlsx",  # Try current directory
-                r"./job_listings.xlsx"  # Also try explicit current directory
+                r"./job_listings.xlsx",  # Also try explicit current directory
+                os.path.join(os.path.dirname(__file__), "job_listings.xlsx"),  # Path relative to this file
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "job_listings.xlsx")  # Absolute path
             ]
             
             excel_file = None
@@ -970,7 +971,7 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
         print("Loading job listings from Excel...")
         job_df = pd.read_excel(
             excel_file, 
-            usecols=['title', 'link'],  # Only use essential columns
+            usecols=['title', 'link', 'source', 'date scraped'],  # Include all your columns
             engine='openpyxl'  # Specify engine explicitly
         )
         
@@ -1010,7 +1011,7 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
                     all_job_data.append(result)
                     
                     # Early termination if we have enough jobs and have been processing for over 15 seconds
-                    if len(all_job_data) >= 10 and time.time() - start_time > 15:
+                    if len(all_job_data) >= 5 and time.time() - start_time > 12:  # Reduced from 10 jobs and 15 seconds
                         # Cancel remaining futures
                         for f in futures:
                             if not f.done():
@@ -1039,8 +1040,12 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
             job_names,
             job_title,
             skills,
-            top_k=10  # Get top 10 results
+            top_k=5  # Reduced from 10 to 5
         )
+        
+        # Create a pandas DataFrame from the recommendations for easier processing
+        import pandas as pd
+        df_recommendations = pd.DataFrame(recommendations)
         
         # Clean up resources
         clean_old_cache_entries()  # Clean up stale cache entries
@@ -1054,26 +1059,40 @@ def handle_web_request(job_title, skills, experience, uploaded_file=None):
         processing_time = time.time() - start_time
         print(f"Processing completed in {processing_time:.2f} seconds")
         
-        # Include processing time in response
-        return {
-            "recommendations": recommendations,
-            "processing_time": f"{processing_time:.2f} seconds",
-            "model_used": "all-MiniLM-L6-v2"  # Update to show correct model
-        }
+        return df_recommendations
         
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        return {"error": f"Error don happen: {str(e)}", "details": error_details}
+        print(f"Error during job recommendation: {str(e)}")
+        print(error_details)
+        return pd.DataFrame()  # Return empty DataFrame
     finally:
         # Ensure resources are cleaned up
         stop_batch_processing()
         emergency_memory_cleanup()
 
+# Function specifically for Streamlit integration
+def streamlit_recommendation(job_title, skills, experience, uploaded_file=None):
+    """Wrapper function designed specifically for Streamlit integration"""
+    print(f"Starting job recommendation for: {job_title}, Skills: {skills}, Experience: {experience}")
+    
+    if not job_title or not skills:
+        print("Error: Missing job title or skills")
+        return pd.DataFrame()
+    
+    result = handle_web_request(job_title, skills, experience, uploaded_file)
+    
+    if isinstance(result, dict) and "error" in result:
+        print(f"Error occurred: {result['error']}")
+        return pd.DataFrame()  # Return empty DataFrame on error
+    
+    return result
+
 def main():
     """Command-line interface for the job recommender"""
     try:
-        print("🚀 Starting Advanced Job Recommender with BGE model...")
+        print("🚀 Starting Job Recommender...")
         
         # Use the correct Excel file path
         excel_file = r"job_listings.xlsx"  # Try current directory first
@@ -1087,7 +1106,7 @@ def main():
         
         print("Loading job data...")
         # Load job listings from Excel - only needed columns
-        job_df = pd.read_excel(excel_file, usecols=['title', 'link'])
+        job_df = pd.read_excel(excel_file, usecols=['title', 'link', 'source', 'date scraped'])
         
         if job_df.empty:
             print("No job listings found. Please check your Excel file.")
@@ -1098,34 +1117,31 @@ def main():
         user_skills = input("Which skills or qualifications you get for this job?: ")
         user_experience = int(input("How many years of experience you get like this?: "))
         
-        print("\nStarting search... This go take like 30-60 seconds with the BGE large model...")
+        print("\nStarting search... This go take like 30-60 seconds...")
         
         # Call the web handler with CLI inputs
-        result = handle_web_request(user_input, user_skills, user_experience)
+        result = streamlit_recommendation(user_input, user_skills, user_experience)
         
-        if "error" in result:
+        if isinstance(result, dict) and "error" in result:
             print(f"Error: {result['error']}")
             return
             
         # Display the recommendations
         print("\n===== THE TOP JOBS WEY FIT YOU WELL =====\n")
         
-        for i, job in enumerate(result["recommendations"], 1):
-            print(f"#{i}. {job['jobTitle']}")
+        for i, (_, job) in enumerate(result.iterrows(), 1):
+            print(f"#{i}. {job['title']}")
             print(f"Company: {job['company']}")
-            print(f"Match Score: {40 + job['score']}%")
+            print(f"Match Score: {job['match_score']}%")
             print(f"Location: {job['location']}")
-            if job.get('key_skills'):
-                print(f"Key Skills: {job['key_skills']}")
+            if 'required_skills' in job and job['required_skills']:
+                print(f"Key Skills: {', '.join(job['required_skills'])}")
             if job['salary'] != "Not specified":
                 print(f"Salary: {job['salary']}")
             if job['experience'] > 0:
                 print(f"Experience Required: {job['experience']}+ years")
             print(f"Job Link: {job['url']}")
             print("-" * 50)
-        
-        if "processing_time" in result:
-            print(f"\nProcessing Time: {result['processing_time']}")
         
     except Exception as e:
         import traceback
