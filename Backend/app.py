@@ -1,7 +1,7 @@
 # Importing the patch module first - before any other imports
 import patch_imports
 
-from flask iimport streamlit as st
+from flask import streamlit as st
 import pandas as pd
 import numpy as np
 import sys
